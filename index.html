@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Asta Fantacalcio</title>
+<link rel="stylesheet" href="style.css" />
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    margin: 0; padding: 20px; box-sizing: border-box;
+  }
+  button {
+    font-size: 2em;
+    padding: 20px;
+    width: 90vw;
+    margin: 10px auto;
+    display: block;
+    border: none;
+    border-radius: 10px;
+    color: white;
+    cursor: pointer;
+  }
+  #btn1 { background-color: green; }
+  #btn5 { background-color: orange; }
+  #btn10 { background-color: red; }
+  #logoutBtn {
+    background-color: gray;
+    font-size: 1em;
+    width: 90vw;
+  }
+  #controller {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  table {
+    border-collapse: collapse;
+    margin: 20px auto;
+    width: 90vw;
+  }
+  th, td {
+    border: 1px solid #333;
+    padding: 8px 12px;
+    text-align: center;
+  }
+  #timer {
+    font-size: 3em;
+    color: red;
+    margin: 10px 0;
+  }
+</style>
+</head>
+<body>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
+  const urlParams = new URLSearchParams(window.location.search);
+  const mode = urlParams.get('mode');
+
+  if (mode === 'display') {
+    document.body.innerHTML = `
+      <h1 style="text-align:center;">Asta Fantacalcio - Display</h1>
+      <div style="text-align:center; margin-bottom:20px;">
+        <input id="playerName" type="text" placeholder="Nome giocatore" style="font-size:1.5em; padding:5px; width: 300px;">
+        <button id="startAuctionBtn" style="font-size:1.5em; padding: 10px 20px; margin-left:10px;">Inizia asta</button>
+        <div id="startMsg" style="color:red; margin-top:10px;"></div>
+      </div>
+      <h2>Giocatore in asta: <span id="currentPlayer"></span></h2>
+      <h3>Prezzo attuale: €<span id="price">0</span></h3>
+      <h3>Ultimo rilancio di: <span id="user">Nessuno</span></h3>
+      <div id="timer">Timer: --</div>
+      <div id="winner" style="font-size: 1.5em; margin-top: 20px;"></div>
+      <h2>Storico aste concluse</h2>
+      <table>
+        <thead>
+          <tr><th>Giocatore</th><th>Vincitore</th><th>Prezzo (€)</th></tr>
+        </thead>
+        <tbody id="historyBody"></tbody>
+      </table>
+    `;
+
+    const playerNameInput = document.getElementById('playerName');
+    const startAuctionBtn = document.getElementById('startAuctionBtn');
+    const startMsg = document.getElementById('startMsg');
+    const currentPlayerEl = document.getElementById('currentPlayer');
+    const priceEl = document.getElementById('price');
+    const userEl = document.getElementById('user');
+    const timerEl = document.getElementById('timer');
+    const winnerEl = document.getElementById('winner');
+    const historyBody = document.getElementById('historyBody');
+
+    startAuctionBtn.addEventListener('click', () => {
+      const playerName = playerNameInput.value.trim();
+      if (!playerName) {
+        startMsg.textContent = 'Inserisci un nome giocatore valido.';
+        return;
+      }
+      startMsg.textContent = '';
+      socket.emit('startAuction', { playerName });
+    });
+
+    socket.on('startRejected', (msg) => {
+      startMsg.textContent = msg;
+    });
+
+    socket.on('auctionStarted', ({ player }) => {
+      currentPlayerEl.textContent = player;
+      priceEl.textContent = 0;
+      userEl.textContent = 'Nessuno';
+      timerEl.textContent = `Timer: ${timerSeconds}s`;
+      winnerEl.textContent = '';
+      playerNameInput.value = '';
+    });
+
+    socket.on('updatePrice', ({ price, user }) => {
+      priceEl.textContent = price;
+      userEl.textContent = user || 'Nessuno';
+    });
+
+    socket.on('timerUpdate', (timeLeft) => {
+      timerEl.textContent = `Timer: ${timeLeft}s`;
+    });
+
+    socket.on('auctionEnded', ({ winner, price, player, auctionHistory }) => {
+      timerEl.textContent = 'Asta terminata!';
+      winnerEl.textContent = `Vincitore: ${winner || 'Nessuno'} con €${price || 0}`;
+      currentPlayerEl.textContent = '';
+      updateHistoryTable(auctionHistory);
+    });
+
+    socket.on('updateState', (state) => {
+      if (state.currentPlayer) {
+        currentPlayerEl.textContent = state.currentPlayer;
+      }
+      priceEl.textContent = state.currentPrice || 0;
+      userEl.textContent = state.currentUser || 'Nessuno';
+      timerEl.textContent = `Timer: ${state.timeLeft || '--'}s`;
+      updateHistoryTable(state.auctionHistory || []);
+    });
+
+    function updateHistoryTable(history) {
+      historyBody.innerHTML = '';
+      history.forEach(({ player, winner, price }) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${player}</td>
+          <td>${winner || '-'}</td>
+          <td>€${price || 0}</td>
+        `;
+        historyBody.appendChild(tr);
+      });
+    }
+
+    const timerSeconds = 15;
+
+  } else {
+    // CONTROLLER (telefono)
+    if (!localStorage.getItem('username')) {
+      document.body.innerHTML = `
+        <h2 style="text-align:center; margin-top: 50px;">Login</h2>
+        <input type="text" id="loginName" placeholder="Inserisci il tuo nome" style="display:block; margin: 20px auto; font-size:1.5em; padding: 10px; width: 80%; max-width: 300px;" />
+        <button id="loginBtn" style="display:block; margin: 10px auto; font-size:1.5em; padding: 10px 20px;">Entra</button>
+      `;
+      document.getElementById('loginBtn').addEventListener('click', () => {
+        const name = document.getElementById('loginName').value.trim();
+        if (name.length < 1) {
+          alert('Inserisci un nome valido');
+          return;
+        }
+        localStorage.setItem('username', name);
+        location.reload();
+      });
+    } else {
+      const username = localStorage.getItem('username');
+      document.body.innerHTML = `
+        <div id="controller" style="height:100vh; display:flex; flex-direction: column; justify-content: center; align-items: center; gap: 20px;">
+          <h3>Utente: ${username}</h3>
+          <button id="btn1" style="background-color: green;" onclick="bid(1)">+1</button>
+          <button id="btn5" style="background-color: orange;" onclick="bid(5)">+5</button>
+          <button id="btn10" style="background-color: red;" onclick="bid(10)">+10</button>
+          <button id="logoutBtn" style="background-color: gray;">Esci</button>
+        </div>
+      `;
+
+      document.getElementById('logoutBtn').addEventListener('click', () => {
+        localStorage.removeItem('username');
+        location.reload();
+      });
+
+      function setButtonsEnabled(enabled) {
+        document.querySelectorAll('#controller button').forEach(btn => {
+          if (btn.id !== 'logoutBtn') btn.disabled = !enabled;
+        });
+      }
+
+      socket.on('bidRejected', (msg) => {
+        alert(msg);
+        setButtonsEnabled(true);
+      });
+
+      socket.on('auctionEnded', () => {
+        setButtonsEnabled(false);
+        alert('L’asta è terminata.');
+      });
+
+      setButtonsEnabled(true);
+
+      window.bid = function (amount) {
+        setButtonsEnabled(false);
+        socket.emit('bid', { amount, user: username });
+
+        // Delay per evitare clic troppo ravvicinati
+        setTimeout(() => {
+          setButtonsEnabled(true);
+        }, 1000);
+      }
+    }
+  }
+</script>
+</body>
+</html>
+
+
+
+
+

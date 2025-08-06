@@ -129,6 +129,11 @@
       updateHistoryTable(auctionHistory);
     });
 
+    socket.on('auctionStarted', () => {
+  setButtonsEnabled(true); // Attiva i pulsanti all’inizio di ogni nuova asta
+
+    });
+
     socket.on('updateState', (state) => {
       if (state.currentPlayer) {
         currentPlayerEl.textContent = state.currentPlayer;
@@ -220,6 +225,7 @@
 </script>
 </body>
 </html>
+
 
 
 
